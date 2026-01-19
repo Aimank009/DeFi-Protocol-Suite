@@ -6,16 +6,19 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract Vault is ERC4626, AccessControl, Pausable {
+import "../events/VaultEvents.sol";
+contract Vault is ERC4626, AccessControl, Pausable, VaultEvents {
     constructor(IERC20 _asset) ERC4626(_asset) ERC20("VaultAKToken", "vAKT") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
     function pause() public onlyRole(DEFAULT_ADMIN_ROLE) {
         _pause();
+        emit VaultPaused(msg.sender);
     }
-    function unPause() public onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() public onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
+        emit VaultUnpaused(msg.sender);
     }
 
     function deposit(
