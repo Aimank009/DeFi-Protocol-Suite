@@ -11,6 +11,7 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
     using SafeERC20 for IERC20;
     IERC20 public stakingToken;
     IERC20 public rewardsToken;
+    address public treasury;
 
     uint256 public rewardRate;
     uint256 public rewardsDuration = 7 days;
@@ -33,6 +34,10 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
     mapping(address => UserInfo) public userInfo;
 
     error InvalidAddress();
+    error InsufficientAmount();
+    error BelowMinimumStake();
+    error TransferFailed();
+    error InsufficientBalance();
 
     constructor(address _stakingToken, address _rewardsToken) {
         if (_stakingToken == address(0)) revert InvalidAddress();
@@ -41,6 +46,7 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         stakingToken = IERC20(_stakingToken);
         rewardsToken = IERC20(_rewardsToken);
+        treasury = msg.sender;
     }
 
     function rewardPerToken() public view returns (uint256) {
@@ -72,5 +78,43 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
             userInfo[_user].rewardPerTokenPaid = accRewardPerToken;
         }
         _;
+    }
+
+    function stake(
+        uint256 _amount
+    ) external nonReentrant whenNotPaused updateReward(msg.sender) {
+        if (_amount == 0) revert InsufficientAmount();
+        if (_amount < minStakeAmount) revert BelowMinimumStake();
+
+        stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
+
+        totalSupply += _amount;
+        userInfo[msg.sender].amount += _amount;
+        userInfo[msg.sender].startTime = block.timestamp;
+    }
+
+    function withdraw(
+        uint256 _amount
+    ) external nonReentrant updateReward(msg.sender) {
+        if (_amount == 0) revert InsufficientAmount();
+        if (
+            userInfo[msg.sender].amount == 0 ||
+            _amount > userInfo[msg.sender].amount
+        ) revert InsufficientBalance();
+
+        uint256 penalty = 0;
+        uint256 timeElapsed = userInfo[msg.sender].startTime + lockDuration;
+        if (block.timestamp < timeElapsed) {
+            penalty = (_amount * earlyWithdrawFee) / 10000;
+        }
+
+        totalSupply -= _amount;
+        userInfo[msg.sender].amount -= _amount;
+        uint256 amountAfterPenalty = _amount - penalty;
+        stakingToken.safeTransfer(msg.sender, amountAfterPenalty);
+
+        if (penalty > 0) {
+            stakingToken.safeTransfer(treasury, penalty);
+        }
     }
 }
