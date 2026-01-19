@@ -42,4 +42,35 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
         stakingToken = IERC20(_stakingToken);
         rewardsToken = IERC20(_rewardsToken);
     }
+
+    function rewardPerToken() public view returns (uint256) {
+        if (totalSupply == 0) return accRewardPerToken;
+
+        return
+            accRewardPerToken +
+            (((lastTimeRewardApplicable() - lastUpdateTime) *
+                rewardRate *
+                1e18) / totalSupply);
+    }
+
+    function lastTimeRewardApplicable() public view returns (uint256) {
+        return block.timestamp < periodFinish ? block.timestamp : periodFinish;
+    }
+
+    function earned(address _user) public view returns (uint256) {
+        UserInfo storage user = userInfo[_user];
+        return
+            ((user.amount * (rewardPerToken() - user.rewardPerTokenPaid)) /
+                1e18) + user.unclaimedRewards;
+    }
+
+    modifier updateReward(address _user) {
+        accRewardPerToken = rewardPerToken();
+        lastUpdateTime = lastTimeRewardApplicable();
+        if (_user != address(0)) {
+            userInfo[_user].unclaimedRewards = earned(_user);
+            userInfo[_user].rewardPerTokenPaid = accRewardPerToken;
+        }
+        _;
+    }
 }
