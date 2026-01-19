@@ -7,7 +7,9 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract Staking is ReentrancyGuard, Pausable, AccessControl {
+import "../events/StakingEvents.sol";
+
+contract Staking is ReentrancyGuard, Pausable, AccessControl, StakingEvents {
     using SafeERC20 for IERC20;
     IERC20 public stakingToken;
     IERC20 public rewardsToken;
@@ -91,6 +93,8 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
         totalSupply += _amount;
         userInfo[msg.sender].amount += _amount;
         userInfo[msg.sender].startTime = block.timestamp;
+
+        emit Staked(msg.sender, _amount);
     }
 
     function withdraw(
@@ -116,6 +120,8 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
         if (penalty > 0) {
             stakingToken.safeTransfer(treasury, penalty);
         }
+
+        emit Withdrawn(msg.sender, _amount, penalty);
     }
 
     function getReward() public nonReentrant updateReward(msg.sender) {
@@ -123,6 +129,7 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
         if (reward > 0) {
             userInfo[msg.sender].unclaimedRewards = 0;
             rewardsToken.safeTransfer(msg.sender, reward);
+            emit RewardPaid(msg.sender, reward);
         }
     }
     function exit() external {
@@ -144,6 +151,8 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
         lastUpdateTime = block.timestamp;
         periodFinish = block.timestamp + rewardsDuration;
         rewardsToken.safeTransferFrom(msg.sender, address(this), _amount);
+
+        emit RewardAdded(_amount);
     }
     function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _pause();
@@ -155,17 +164,22 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
         uint256 _duration
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         lockDuration = _duration;
+
+        emit LockDurationUpdated(_duration);
     }
     function setEarlyWithdrawFee(
         uint256 _fee
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         earlyWithdrawFee = _fee;
+
+        emit EarlyWithdrawFeeUpdated(_fee);
     }
     function setTreasury(
         address _treasury
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (_treasury == address(0)) revert InvalidAddress();
         treasury = _treasury;
+        emit TreasuryUpdated(_treasury);
     }
     function setMinStakeAmount(
         uint256 _amount
