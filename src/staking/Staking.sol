@@ -95,7 +95,7 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
 
     function withdraw(
         uint256 _amount
-    ) external nonReentrant updateReward(msg.sender) {
+    ) public nonReentrant updateReward(msg.sender) {
         if (_amount == 0) revert InsufficientAmount();
         if (
             userInfo[msg.sender].amount == 0 ||
@@ -116,5 +116,71 @@ contract Staking is ReentrancyGuard, Pausable, AccessControl {
         if (penalty > 0) {
             stakingToken.safeTransfer(treasury, penalty);
         }
+    }
+
+    function getReward() public nonReentrant updateReward(msg.sender) {
+        uint256 reward = userInfo[msg.sender].unclaimedRewards;
+        if (reward > 0) {
+            userInfo[msg.sender].unclaimedRewards = 0;
+            rewardsToken.safeTransfer(msg.sender, reward);
+        }
+    }
+    function exit() external {
+        withdraw(userInfo[msg.sender].amount);
+        getReward();
+    }
+
+    function notifyRewardAmount(
+        uint256 _amount
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) updateReward(address(0)) {
+        if (block.timestamp >= periodFinish) {
+            rewardRate = _amount / rewardsDuration;
+        } else {
+            uint256 remaining = periodFinish - block.timestamp;
+            uint256 leftover = remaining * rewardRate;
+            rewardRate = (_amount + leftover) / rewardsDuration;
+        }
+
+        lastUpdateTime = block.timestamp;
+        periodFinish = block.timestamp + rewardsDuration;
+        rewardsToken.safeTransferFrom(msg.sender, address(this), _amount);
+    }
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
+    function setLockDuration(
+        uint256 _duration
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        lockDuration = _duration;
+    }
+    function setEarlyWithdrawFee(
+        uint256 _fee
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        earlyWithdrawFee = _fee;
+    }
+    function setTreasury(
+        address _treasury
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_treasury == address(0)) revert InvalidAddress();
+        treasury = _treasury;
+    }
+    function setMinStakeAmount(
+        uint256 _amount
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        minStakeAmount = _amount;
+    }
+
+    function recoverERC20(
+        address _token,
+        uint256 _amount
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(
+            _token != address(stakingToken) && _token != address(rewardsToken),
+            "Cannot recover"
+        );
+        IERC20(_token).safeTransfer(msg.sender, _amount);
     }
 }
